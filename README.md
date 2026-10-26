@@ -18,6 +18,8 @@ make dev          # jalankan untuk development (auto-reload jika air terpasang)
 make build        # build binary lokal ke build/testgo
 make build-prod   # build binary production (linux/amd64, statis, stripped)
 make run          # build lalu jalankan binary
+make docker-build # build image Docker (distroless)
+make docker-run   # jalankan image Docker
 make test         # jalankan test
 make check        # fmt + vet + test
 make clean        # hapus hasil build
@@ -26,6 +28,27 @@ make clean        # hapus hasil build
 Port bisa diubah saat menjalankan: `make dev PORT=3000`.
 
 Auto-reload memakai [air](https://github.com/air-verse/air); jika belum ada, `make dev` otomatis memakai `go run` biasa. Install dengan `make install-air`.
+
+## Docker
+
+```bash
+make docker-build                      # build image testgo:latest
+docker run --rm -p 8080:8080 testgo:latest
+```
+
+Atau langsung dengan Docker:
+
+```bash
+docker build -t testgo:latest .
+docker run --rm -p 8080:8080 -e PORT=8080 testgo:latest
+```
+
+Image memakai build multi-stage:
+
+- **builder**: `golang:1.27.3-trixie`, binary statis (`CGO_ENABLED=0`), `-trimpath -ldflags="-s -w"`.
+- **runtime**: `gcr.io/distroless/static-debian13:nonroot`, hanya berisi binary (sekitar 18 MB), berjalan sebagai user non-root, tanpa shell/package manager.
+
+Karena distroless tidak punya shell maupun `curl`, health check sebaiknya dilakukan dari luar container (load balancer, Kubernetes probe, atau `docker inspect`).
 
 ## Struktur
 

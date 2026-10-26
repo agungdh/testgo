@@ -5,6 +5,9 @@ BIN       := $(BIN_DIR)/$(APP_NAME)
 GO        ?= go
 PORT      ?= 8080
 
+IMAGE     ?= $(APP_NAME):latest
+PLATFORM  ?= linux/amd64
+
 # Build untuk production: statis, tanpa debug info, path dibersihkan.
 PROD_GOOS   ?= linux
 PROD_GOARCH ?= amd64
@@ -75,6 +78,14 @@ check: fmt vet test ## Format, analisis statis, dan test
 .PHONY: install-air
 install-air: ## Install air untuk auto-reload saat development
 	$(GO) install github.com/air-verse/air@latest
+
+.PHONY: docker-build
+docker-build: ## Build image Docker (multi-stage, distroless)
+	docker build --platform $(PLATFORM) -t $(IMAGE) .
+
+.PHONY: docker-run
+docker-run: ## Jalankan image Docker (host port dari PORT)
+	docker run --rm -p $(PORT):8080 -e PORT=8080 $(IMAGE)
 
 .PHONY: clean
 clean: ## Hapus hasil build dan file coverage
