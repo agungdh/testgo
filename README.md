@@ -10,6 +10,23 @@ go run .
 
 Server berjalan di `http://localhost:8080` (ubah dengan env `PORT`).
 
+## Perintah Make
+
+```bash
+make help         # daftar perintah
+make dev          # jalankan untuk development (auto-reload jika air terpasang)
+make build        # build binary lokal ke build/testgo
+make build-prod   # build binary production (linux/amd64, statis, stripped)
+make run          # build lalu jalankan binary
+make test         # jalankan test
+make check        # fmt + vet + test
+make clean        # hapus hasil build
+```
+
+Port bisa diubah saat menjalankan: `make dev PORT=3000`.
+
+Auto-reload memakai [air](https://github.com/air-verse/air); jika belum ada, `make dev` otomatis memakai `go run` biasa. Install dengan `make install-air`.
+
 ## Struktur
 
 ```
