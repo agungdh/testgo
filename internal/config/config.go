@@ -22,6 +22,7 @@ type Config struct {
 
 // DBConfig berisi pengaturan connection pool database.
 type DBConfig struct {
+	AutoMigrate     bool
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
@@ -39,6 +40,7 @@ func Load() Config {
 		Port:        getString("PORT", "8080"),
 		DatabaseURL: getString("DATABASE_URL", "postgres://admin:admin@localhost:5432/simonjp?sslmode=disable"),
 		DB: DBConfig{
+			AutoMigrate:     getBool("DB_AUTO_MIGRATE", true),
 			MaxOpenConns:    getInt("DB_MAX_OPEN_CONNS", 10),
 			MaxIdleConns:    getInt("DB_MAX_IDLE_CONNS", 2),
 			ConnMaxLifetime: getDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
@@ -85,6 +87,20 @@ func getDuration(key string, fallback time.Duration) time.Duration {
 	value, err := time.ParseDuration(raw)
 	if err != nil {
 		slog.Warn("nilai konfigurasi bukan durasi, memakai default", "key", key, "value", raw, "default", fallback)
+		return fallback
+	}
+	return value
+}
+
+func getBool(key string, fallback bool) bool {
+	raw := getString(key, "")
+	if raw == "" {
+		return fallback
+	}
+
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("nilai konfigurasi bukan boolean, memakai default", "key", key, "value", raw, "default", fallback)
 		return fallback
 	}
 	return value

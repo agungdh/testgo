@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/uptrace/bun"
 )
 
 // Product adalah representasi produk yang disimpan dan dikembalikan via API.
 type Product struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Price     float64   `json:"price"`
-	Stock     int       `json:"stock"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	bun.BaseModel `bun:"table:products,alias:p"`
+
+	ID        string    `bun:"id,pk,type:uuid" json:"id"`
+	Name      string    `bun:"name,notnull" json:"name"`
+	Price     float64   `bun:"price,notnull,type:numeric(12,2)" json:"price"`
+	Stock     int       `bun:"stock,notnull" json:"stock"`
+	CreatedAt time.Time `bun:"created_at,notnull,default:now()" json:"created_at"`
+	UpdatedAt time.Time `bun:"updated_at,notnull,default:now()" json:"updated_at"`
 }
 
 // CreateProductRequest adalah payload untuk membuat produk baru.

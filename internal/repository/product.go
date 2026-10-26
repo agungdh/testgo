@@ -17,7 +17,8 @@ var (
 )
 
 // ProductRepository abstraksi penyimpanan produk.
-// Implementasi saat ini in-memory, mudah diganti dengan database.
+// Implementasi PostgreSQL dipakai aplikasi, sedangkan versi in-memory
+// dipertahankan untuk test yang tidak membutuhkan database.
 type ProductRepository interface {
 	List(ctx context.Context) ([]models.Product, error)
 	GetByID(ctx context.Context, id string) (models.Product, error)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"testgo/internal/config"
+	"testgo/internal/db"
 	"testgo/internal/repository"
 	"testgo/internal/router"
 )
@@ -18,7 +19,25 @@ import (
 func main() {
 	cfg := config.Load()
 
-	repo := repository.NewMemoryProductRepository()
+	database := db.NewDB(cfg)
+	defer database.Close()
+
+	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 30*time.Second)
+
+	if err := database.PingContext(startupCtx); err != nil {
+		slog.Error("gagal terhubung ke database", "error", err)
+		os.Exit(1)
+	}
+
+	if cfg.DB.AutoMigrate {
+		if err := db.RunMigrations(startupCtx, database.DB, "up"); err != nil {
+			slog.Error("gagal menjalankan migrasi", "error", err)
+			os.Exit(1)
+		}
+	}
+	cancelStartup()
+
+	repo := repository.NewPostgresProductRepository(database)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

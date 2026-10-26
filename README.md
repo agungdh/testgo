@@ -1,18 +1,24 @@
 # testgo
 
-REST API CRUD produk sederhana menggunakan [chi](https://github.com/go-chi/chi) (router) dan penyimpanan in-memory (tanpa database).
+REST API CRUD produk sederhana menggunakan [chi](https://github.com/go-chi/chi) (router), [bun](https://bun.uptrace.dev/) (ORM), PostgreSQL, dan [goose](https://github.com/pressly/goose) untuk migrasi database.
 
 ## Menjalankan
 
 Semua konfigurasi dibaca dari file `.env`:
 
 ```bash
-cp .env.example .env   # sekali saja, lalu sesuaikan bila perlu
-go run .
+cp .env.example .env          # sekali saja, lalu sesuaikan bila perlu
+docker compose up -d postgres # jalankan PostgreSQL lokal
+go run .                      # migrasi otomatis dijalankan saat start
 ```
 
 Server berjalan di `http://localhost:8080`. Ubah port lewat `PORT` di `.env`,
 lalu jalankan ulang aplikasi.
+
+`DB_AUTO_MIGRATE=true` membuat aplikasi menerapkan migrasi yang belum jalan
+secara otomatis saat start. Untuk menjalankan migrasi secara manual (misalnya
+di production yang tidak ingin auto-migrate), set `DB_AUTO_MIGRATE=false` lalu
+pakai perintah `make migrate-up`.
 
 `.env` tidak ikut di-commit; template-nya ada di `.env.example`. Di production
 yang tidak memakai `.env`, variabel tetap bisa dikirim lewat environment proses
@@ -23,6 +29,7 @@ dan nilainya menang atas isi `.env`.
 | `APP_ENV` | `development` | mode aplikasi |
 | `PORT` | `8080` | port HTTP server |
 | `DATABASE_URL` | `postgres://admin:admin@localhost:5432/simonjp?sslmode=disable` | koneksi PostgreSQL |
+| `DB_AUTO_MIGRATE` | `true` | jalankan migrasi goose saat aplikasi start |
 | `DB_MAX_OPEN_CONNS` | `10` | maksimal koneksi terbuka |
 | `DB_MAX_IDLE_CONNS` | `2` | maksimal koneksi idle |
 | `DB_CONN_MAX_LIFETIME` | `5m` | umur maksimal koneksi |
@@ -33,16 +40,37 @@ Variabel `POSTGRES_*` dan `VALKEY_*` hanya dipakai oleh `docker compose`.
 ## Perintah Make
 
 ```bash
-make help         # daftar perintah
-make env          # buat .env dari .env.example jika belum ada
-make dev          # jalankan aplikasi untuk development
-make build        # build binary lokal ke build/testgo
-make run          # build lalu jalankan binary
-make test         # jalankan semua test
-make clean        # hapus hasil build
+make help             # daftar perintah
+make env              # buat .env dari .env.example jika belum ada
+make dev              # jalankan aplikasi untuk development
+make build            # build binary lokal ke build/testgo
+make run              # build lalu jalankan binary
+make test             # jalankan semua test
+make migrate-up       # terapkan semua migrasi database
+make migrate-down     # rollback satu migrasi terakhir
+make migrate-status   # tampilkan status migrasi
+make migrate-version  # tampilkan versi migrasi aktif
+make migrate-create name=nama_migrasi  # buat file migrasi baru
+make clean            # hapus hasil build
 ```
 
 Port diubah lewat `PORT` di `.env`, bukan lewat argumen `make`.
+
+## Migrasi database
+
+File migrasi ada di `internal/db/migrations` dan di-embed ke dalam binary,
+sehingga image Docker tidak membutuhkan goose CLI atau file SQL terpisah.
+Migrasi memakai format goose SQL (`-- +goose Up` / `-- +goose Down`).
+
+```bash
+make migrate-up
+make migrate-status
+make migrate-create name=add_categories
+```
+
+Menjalankan `make migrate-create` membuat file baru di
+`internal/db/migrations`; rebuild binary agar migrasi baru ikut ter-embed.
+Perintah `down` hanya me-rollback satu migrasi terakhir agar aman.
 
 ## Service lokal (Docker Compose)
 
@@ -94,12 +122,17 @@ docker build --build-arg GOAMD64=v2 -t testgo:v2 .
 ## Struktur
 
 ```
-main.go                          # entrypoint + graceful shutdown
-internal/config/config.go        # loader .env + konfigurasi
-internal/models/product.go       # model & validasi request
-internal/repository/product.go   # interface + implementasi in-memory
-internal/handler/product.go      # HTTP handler CRUD
-internal/router/router.go        # routing & middleware
+main.go                                    # entrypoint + graceful shutdown
+cmd/migrate/main.go                        # CLI goose (up/down/status/version)
+internal/config/config.go                  # loader .env + konfigurasi
+internal/db/db.go                          # koneksi bun + PostgreSQL
+internal/db/migrate.go                     # runner migrasi goose (embed)
+internal/db/migrations/                    # file migrasi SQL
+internal/models/product.go                 # model, tag bun & validasi request
+internal/repository/product.go             # interface + repository in-memory (test)
+internal/repository/postgres_product.go    # repository PostgreSQL (bun)
+internal/handler/product.go                # HTTP handler CRUD
+internal/router/router.go                  # routing & middleware
 ```
 
 ## Endpoint
@@ -145,4 +178,5 @@ go test ./...
 
 ## Catatan
 
-Data disimpan di memori, sehingga hilang saat server dimatikan. Untuk memakai database, cukup buat implementasi baru dari `repository.ProductRepository` lalu daftarkan di `main.go`.
+Data produk disimpan di PostgreSQL. Repository in-memory tetap tersedia dan
+dipakai oleh test router supaya `go test ./...` tidak membutuhkan database.
