@@ -17,12 +17,15 @@ COPY . .
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-# Level microarchitecture minimum binary. v2 = butuh SSE4.2/POPCNT (CPU 2008+).
+# Level microarchitecture minimum binary.
+# x86-64: v2 = butuh SSE4.2/POPCNT (CPU 2008+).
 ARG GOAMD64=v2
+# ARM64: v8.0 = ARMv8-A baseline.
+ARG GOARM64=v8.0
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOAMD64=${GOAMD64} \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOAMD64=${GOAMD64} GOARM64=${GOARM64} \
     go build -trimpath -ldflags="-s -w" -o /out/testgo .
 
 # ---------- Stage 2: runtime ----------
