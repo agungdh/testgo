@@ -45,7 +45,7 @@ jobs:
           GOARM64: ${{ matrix.goarm64 }}
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o dist/testgo-${{ matrix.arch }} .
+          go build -trimpath -ldflags="-s -w" -o dist/testgo .
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -66,7 +66,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.arch }}
           build-args: |
-            BINARY=dist/testgo-${{ matrix.arch }}
+            BINARY=dist/testgo
 
   manifest:
     needs: build

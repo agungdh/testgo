@@ -4,7 +4,7 @@
 # per architecture) and copied in here, so this image contains no toolchain.
 FROM gcr.io/distroless/static-debian13:nonroot
 
-ARG BINARY=dist/testgo-amd64
+ARG BINARY=dist/testgo
 COPY ${BINARY} /app/testgo
 
 ENV PORT=8080
