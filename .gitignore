@@ -22,6 +22,7 @@ go.work.sum
 # Build output
 /bin/
 /build/
+/dist/
 
 # Editor / OS files
 .idea/

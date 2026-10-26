@@ -43,10 +43,9 @@ docker build -t testgo:latest .
 docker run --rm -p 8080:8080 -e PORT=8080 testgo:latest
 ```
 
-Image memakai build multi-stage:
+Image runtime-only (binary di-build di GitHub Actions, cross-compile per arsitektur):
 
-- **builder**: `golang:1.27.3-trixie`, binary statis (`CGO_ENABLED=0`), `-trimpath -ldflags="-s -w"`.
-- **runtime**: `gcr.io/distroless/static-debian13:nonroot`, hanya berisi binary (sekitar 18 MB), berjalan sebagai user non-root, tanpa shell/package manager.
+- **runtime**: `gcr.io/distroless/static-debian13:nonroot`, hanya berisi binary (sekitar 18 MB), berjalan sebagai user non-root, tanpa shell/package manager. Build multi-arch (linux/amd64, linux/arm64) dilakukan di CI via matrix tanpa QEMU.
 
 Karena distroless tidak punya shell maupun `curl`, health check sebaiknya dilakukan dari luar container (load balancer, Kubernetes probe, atau `docker inspect`).
 
