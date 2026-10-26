@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"os"
+	"time"
 
 	_ "github.com/pressly/goose/v3"
 	"github.com/uptrace/bun"
@@ -18,5 +19,9 @@ func NewDB() *bun.DB {
 		dsn = "postgres://postgres:postgres@localhost:5432/testgo?sslmode=disable"
 	}
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	sqldb.SetMaxOpenConns(25)
+	sqldb.SetMaxIdleConns(5)
+	sqldb.SetConnMaxLifetime(5 * time.Minute)
+	sqldb.SetConnMaxIdleTime(1 * time.Minute)
 	return bun.NewDB(sqldb, pgdialect.New())
 }
