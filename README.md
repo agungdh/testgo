@@ -4,44 +4,67 @@ REST API CRUD produk sederhana menggunakan [chi](https://github.com/go-chi/chi) 
 
 ## Menjalankan
 
+Semua konfigurasi dibaca dari file `.env`:
+
 ```bash
+cp .env.example .env   # sekali saja, lalu sesuaikan bila perlu
 go run .
 ```
 
-Server berjalan di `http://localhost:8080` (ubah dengan env `PORT`).
+Server berjalan di `http://localhost:8080`. Ubah port lewat `PORT` di `.env`,
+lalu jalankan ulang aplikasi.
+
+`.env` tidak ikut di-commit; template-nya ada di `.env.example`. Di production
+yang tidak memakai `.env`, variabel tetap bisa dikirim lewat environment proses
+dan nilainya menang atas isi `.env`.
+
+| Variabel | Default | Keterangan |
+|---|---|---|
+| `APP_ENV` | `development` | mode aplikasi |
+| `PORT` | `8080` | port HTTP server |
+| `DATABASE_URL` | `postgres://admin:admin@localhost:5432/simonjp?sslmode=disable` | koneksi PostgreSQL |
+| `DB_MAX_OPEN_CONNS` | `10` | maksimal koneksi terbuka |
+| `DB_MAX_IDLE_CONNS` | `2` | maksimal koneksi idle |
+| `DB_CONN_MAX_LIFETIME` | `5m` | umur maksimal koneksi |
+| `DB_CONN_MAX_IDLE_TIME` | `1m` | umur maksimal koneksi idle |
+
+Variabel `POSTGRES_*`, `VALKEY_*`, `ADMINER_PORT`, dan `REDIS_COMMANDER_*` hanya
+dipakai oleh `docker compose`.
 
 ## Perintah Make
 
 ```bash
 make help         # daftar perintah
-make dev          # jalankan untuk development (auto-reload jika air terpasang)
+make env          # buat .env dari .env.example jika belum ada
+make dev          # jalankan aplikasi untuk development
 make build        # build binary lokal ke build/testgo
-make build-prod   # build binary production (linux/amd64, statis, stripped)
 make run          # build lalu jalankan binary
-make docker-build # build image Docker (distroless)
-make docker-run   # jalankan image Docker
-make test         # jalankan test
-make check        # fmt + vet + test
+make test         # jalankan semua test
 make clean        # hapus hasil build
 ```
 
-Port bisa diubah saat menjalankan: `make dev PORT=3000`.
+Port diubah lewat `PORT` di `.env`, bukan lewat argumen `make`.
 
-Auto-reload memakai [air](https://github.com/air-verse/air); jika belum ada, `make dev` otomatis memakai `go run` biasa. Install dengan `make install-air`.
+## Service lokal (Docker Compose)
+
+```bash
+docker compose up -d
+```
+
+Postgres, Valkey, Adminer, dan Redis Commander memakai nilai dari `.env`.
+Port default: `5432` (Postgres), `6379` (Valkey), `8083` (Adminer), dan `8084`
+(Redis Commander).
 
 ## Docker
 
 ```bash
-make docker-build                      # build image testgo:latest
+docker build -t testgo:latest .
 docker run --rm -p 8080:8080 testgo:latest
 ```
 
-Atau langsung dengan Docker:
-
-```bash
-docker build -t testgo:latest .
-docker run --rm -p 8080:8080 -e PORT=8080 testgo:latest
-```
+Image tidak membawa file `.env`. Tanpa konfigurasi tambahan aplikasi memakai
+default `PORT=8080`; di production nilainya bisa diberikan lewat environment
+container.
 
 Image runtime-only (binary di-build di GitHub Actions, cross-compile per arsitektur):
 
@@ -73,6 +96,7 @@ docker build --build-arg GOAMD64=v2 -t testgo:v2 .
 
 ```
 main.go                          # entrypoint + graceful shutdown
+internal/config/config.go        # loader .env + konfigurasi
 internal/models/product.go       # model & validasi request
 internal/repository/product.go   # interface + implementasi in-memory
 internal/handler/product.go      # HTTP handler CRUD

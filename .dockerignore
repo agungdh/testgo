@@ -2,6 +2,9 @@
 .gitignore
 .dockerignore
 Dockerfile
+.env
+.env.*
+!.env.example
 
 # Hasil build lokal
 build/

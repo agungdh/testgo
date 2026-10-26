@@ -10,20 +10,18 @@ import (
 	"syscall"
 	"time"
 
+	"testgo/internal/config"
 	"testgo/internal/repository"
 	"testgo/internal/router"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	cfg := config.Load()
 
 	repo := repository.NewMemoryProductRepository()
 
 	srv := &http.Server{
-		Addr:              ":" + port,
+		Addr:              ":" + cfg.Port,
 		Handler:           router.New(repo),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,

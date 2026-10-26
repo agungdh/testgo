@@ -7,7 +7,6 @@ FROM gcr.io/distroless/static-debian13:nonroot
 ARG BINARY=dist/testgo
 COPY ${BINARY} /app/testgo
 
-ENV PORT=8080
 EXPOSE 8080
 
 USER nonroot:nonroot

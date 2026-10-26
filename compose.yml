@@ -3,15 +3,15 @@ services:
     image: postgres:18
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: simonjp
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-simonjp}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d simonjp"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-simonjp}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -19,13 +19,13 @@ services:
   valkey:
     image: valkey/valkey:9.1
     restart: always
-    command: ["valkey-server", "--requirepass", "admin"]
+    command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD:-admin}"]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${VALKEY_PORT:-6379}:6379"
     volumes:
       - valkey_data:/data
     healthcheck:
-      test: ["CMD", "valkey-cli", "-a", "admin", "ping"]
+      test: ["CMD", "valkey-cli", "-a", "${VALKEY_PASSWORD:-admin}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,7 +34,7 @@ services:
     image: adminer:latest
     restart: always
     ports:
-      - "127.0.0.1:8083:8080"
+      - "127.0.0.1:${ADMINER_PORT:-8083}:8080"
     environment:
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:
@@ -50,13 +50,13 @@ services:
     image: rediscommander/redis-commander:latest
     restart: always
     ports:
-      - "127.0.0.1:8084:8081"
+      - "127.0.0.1:${REDIS_COMMANDER_PORT:-8084}:8081"
     environment:
       REDIS_HOST: valkey
       REDIS_PORT: 6379
-      REDIS_PASSWORD: admin
-      HTTP_USER: admin
-      HTTP_PASSWORD: admin
+      REDIS_PASSWORD: ${VALKEY_PASSWORD:-admin}
+      HTTP_USER: ${REDIS_COMMANDER_USER:-admin}
+      HTTP_PASSWORD: ${REDIS_COMMANDER_PASSWORD:-admin}
     depends_on:
       valkey:
         condition: service_healthy

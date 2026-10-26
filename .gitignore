@@ -19,6 +19,11 @@ vendor/
 go.work
 go.work.sum
 
+# Environment (jangan commit nilai lokal)
+.env
+.env.*
+!.env.example
+
 # Build output
 /bin/
 /build/
