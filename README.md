@@ -28,8 +28,7 @@ dan nilainya menang atas isi `.env`.
 | `DB_CONN_MAX_LIFETIME` | `5m` | umur maksimal koneksi |
 | `DB_CONN_MAX_IDLE_TIME` | `1m` | umur maksimal koneksi idle |
 
-Variabel `POSTGRES_*`, `VALKEY_*`, `ADMINER_PORT`, dan `REDIS_COMMANDER_*` hanya
-dipakai oleh `docker compose`.
+Variabel `POSTGRES_*` dan `VALKEY_*` hanya dipakai oleh `docker compose`.
 
 ## Perintah Make
 
