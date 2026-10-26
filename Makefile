@@ -7,10 +7,14 @@ PORT      ?= 8080
 
 IMAGE     ?= $(APP_NAME):latest
 PLATFORM  ?= linux/amd64
+# Level microarchitecture minimum: v1 (default, paling kompatibel), v2, v3, atau v4.
+GOAMD64   ?= v1
 
 # Build untuk production: statis, tanpa debug info, path dibersihkan.
 PROD_GOOS   ?= linux
 PROD_GOARCH ?= amd64
+# v1 = baseline x86-64; naikkan hanya jika semua target CPU mendukungnya.
+PROD_GOAMD64 ?= v1
 PROD_BIN    := $(BIN_DIR)/$(APP_NAME)-$(PROD_GOOS)-$(PROD_GOARCH)
 LDFLAGS     := -s -w
 
@@ -32,7 +36,7 @@ build: ## Build binary untuk lokal (development)
 .PHONY: build-prod
 build-prod: ## Build binary production (statis, stripped, linux/amd64)
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=$(PROD_GOOS) GOARCH=$(PROD_GOARCH) \
+	CGO_ENABLED=0 GOOS=$(PROD_GOOS) GOARCH=$(PROD_GOARCH) GOAMD64=$(PROD_GOAMD64) \
 		$(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(PROD_BIN) .
 	@echo "binary: $(PROD_BIN)"
 
@@ -81,7 +85,7 @@ install-air: ## Install air untuk auto-reload saat development
 
 .PHONY: docker-build
 docker-build: ## Build image Docker (multi-stage, distroless)
-	docker build --platform $(PLATFORM) -t $(IMAGE) .
+	docker build --platform $(PLATFORM) --build-arg GOAMD64=$(GOAMD64) -t $(IMAGE) .
 
 .PHONY: docker-run
 docker-run: ## Jalankan image Docker (host port dari PORT)

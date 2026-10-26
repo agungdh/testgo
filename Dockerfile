@@ -17,10 +17,12 @@ COPY . .
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+# Level microarchitecture minimum binary. v1 = baseline x86-64 (paling kompatibel).
+ARG GOAMD64=v1
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOAMD64=${GOAMD64} \
     go build -trimpath -ldflags="-s -w" -o /out/testgo .
 
 # ---------- Stage 2: runtime ----------

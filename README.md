@@ -50,6 +50,25 @@ Image memakai build multi-stage:
 
 Karena distroless tidak punya shell maupun `curl`, health check sebaiknya dilakukan dari luar container (load balancer, Kubernetes probe, atau `docker inspect`).
 
+### Level microarchitecture (`GOAMD64`)
+
+Default build memakai `GOAMD64=v1` (baseline x86-64) supaya jalan di semua CPU. Nilai ini adalah **minimum requirement**, bukan sekadar optimasi:
+
+| Level | Butuh fitur CPU |
+|-------|-----------------|
+| `v1` | baseline x86-64 |
+| `v2` | SSE3, SSE4.1, SSE4.2, POPCNT, CMPXCHG16B, LAHF/SAHF |
+| `v3` | + AVX, AVX2, BMI1/BMI2, FMA, LZCNT, MOVBE |
+| `v4` | + AVX-512F, AVX-512BW, AVX-512CD, AVX-512DQ, AVX-512VL |
+
+Binary level tinggi **tidak** jalan di CPU level rendah (runtime akan berhenti dengan pesan `This program can only be run on AMD64 processors with vN microarchitecture support.`). Sebaliknya, binary level rendah tetap jalan di CPU level lebih tinggi.
+
+```bash
+make docker-build GOAMD64=v2         # image untuk CPU minimum v2
+make build-prod PROD_GOAMD64=v3      # binary lokal minimum v3
+docker build --build-arg GOAMD64=v2 -t testgo:v2 .
+```
+
 ## Struktur
 
 ```
