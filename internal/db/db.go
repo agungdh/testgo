@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 
+	_ "github.com/pressly/goose/v3"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
