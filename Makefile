@@ -29,9 +29,10 @@ help: ## Tampilkan daftar perintah
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: ## Build binary untuk lokal (development)
+build: ## Build binary untuk lokal (development, native arch PC)
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 $(GO) build -trimpath -o $(BIN) .
+	CGO_ENABLED=0 GOOS=$(shell go env GOHOSTOS) GOARCH=$(shell go env GOHOSTARCH) GOAMD64=$(GOAMD64) \
+		$(GO) build -trimpath -o $(BIN) .
 
 .PHONY: build-prod
 build-prod: ## Build binary production (statis, stripped, linux/amd64)
