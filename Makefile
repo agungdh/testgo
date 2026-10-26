@@ -7,14 +7,14 @@ PORT      ?= 8080
 
 IMAGE     ?= $(APP_NAME):latest
 PLATFORM  ?= linux/amd64
-# Level microarchitecture minimum: v1 (default, paling kompatibel), v2, v3, atau v4.
-GOAMD64   ?= v1
+# Level microarchitecture minimum: v2 (default), v1, v3, atau v4.
+GOAMD64   ?= v2
 
 # Build untuk production: statis, tanpa debug info, path dibersihkan.
 PROD_GOOS   ?= linux
 PROD_GOARCH ?= amd64
-# v1 = baseline x86-64; naikkan hanya jika semua target CPU mendukungnya.
-PROD_GOAMD64 ?= v1
+# v2 = butuh SSE4.2/POPCNT; turunkan ke v1 hanya jika target sangat lama.
+PROD_GOAMD64 ?= v2
 PROD_BIN    := $(BIN_DIR)/$(APP_NAME)-$(PROD_GOOS)-$(PROD_GOARCH)
 LDFLAGS     := -s -w
 

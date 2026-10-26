@@ -17,8 +17,8 @@ COPY . .
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-# Level microarchitecture minimum binary. v1 = baseline x86-64 (paling kompatibel).
-ARG GOAMD64=v1
+# Level microarchitecture minimum binary. v2 = butuh SSE4.2/POPCNT (CPU 2008+).
+ARG GOAMD64=v2
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
