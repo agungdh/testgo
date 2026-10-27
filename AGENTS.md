@@ -96,7 +96,7 @@ FE **tidak boleh** tahu id internal maupun kolom audit. Aturan keras:
 
 ```json
 { "data": { "uuid": "...", "name": "...", "price": 45000 } }
-{ "data": [ { "uuid": "...", "category_uuid": "..." } ], "total": 3 }
+{ "data": [ { "uuid": "...", "category_uuid": "..." } ], "next_cursor": "...", "has_more": true }
 { "error": { "message": "..." } }
 { "error": { "message": "validasi gagal", "fields": { "name": "wajib diisi" } } }
 ```
@@ -182,6 +182,88 @@ Catatan penting:
 - **Semua** query baca wajib menyaring `deleted_at IS NULL`.
 - `GetByUUID` mengembalikan `ErrNotFound` bila baris sudah ter-soft-delete.
 
+## List: Cursor Pagination, Filter, Sort
+
+Semua endpoint list memakai **cursor pagination**, bukan offset. Tidak ada
+`page`, `offset`, atau `total`.
+
+```
+GET /products?after=<uuid>&limit=20&sort=-price&name=kopi
+```
+
+| Param | Default | Aturan |
+|---|---|---|
+| `after` | kosong | `uuid` baris terakhir halaman sebelumnya. Kosong = halaman pertama |
+| `limit` | `20` | 1–100. Di luar rentang → `422` |
+| `sort` | `id DESC` | satu kolom bisnis, prefix `-` untuk DESC |
+| filter | – | whitelist per resource, mis. `name`, `stock_min` |
+
+Aturan:
+
+- Cursor adalah **uuid baris terakhir**, bukan id internal. `after` tidak pernah
+  membawa `id`, offset, atau nomor halaman.
+- Kalau `after` bukan uuid valid, atau barisnya tidak ada / sudah ter-soft-delete →
+  `400` `{"error":{"message":"cursor tidak valid"}}`. Jangan bocorkan apakah
+  barisnya pernah ada.
+- Query mengambil `limit+1` baris untuk menentukan `has_more`. `next_cursor` diisi
+  `uuid` baris ke-`limit` hanya bila `has_more = true`; selain itu `null`.
+- `total` tidak dikirim. Kalau butuh hitungan, buat endpoint terpisah; jangan
+  menambahkannya ke response list.
+- Jangan pakai `OFFSET`: lambat di tabel besar dan hasil bergeser saat ada insert.
+
+### Bentuk query
+
+Urutan selalu diakhiri `id` sebagai tiebreaker (uuid v4 acak, tidak bisa dipakai
+mengurutkan). Resolve cursor dulu, baru ambil halaman:
+
+```sql
+-- 1. resolve cursor: uuid -> sort value + id
+SELECT id, name FROM products WHERE uuid = $1 AND deleted_at IS NULL;
+
+-- 2. halaman berikutnya, sort default id DESC
+SELECT * FROM products
+WHERE deleted_at IS NULL AND id < $cursor_id
+ORDER BY id DESC
+LIMIT $limit + 1;
+```
+
+Untuk kolom sort lain, pakai row-value comparison agar tetap satu query:
+
+```sql
+SELECT * FROM products
+WHERE deleted_at IS NULL
+  AND (name, id) < ($cursor_name, $cursor_id)   -- DESC; ASC pakai >
+ORDER BY name DESC, id DESC
+LIMIT $limit + 1;
+```
+
+- Kolom yang boleh dipakai `sort` **harus NOT NULL**. Row comparison dengan NULL
+  menghasilkan NULL (bukan true), sehingga baris ber-NULL hilang dari hasil.
+- Tambahkan index komposit `(kolom_sort, id)` untuk setiap kolom di whitelist sort.
+- `uuid` tidak boleh jadi kolom sort (acak, tidak bermakna).
+- Sort hanya satu kolom + tiebreaker `id`. Jangan menerima multi-kolom.
+- `id` boleh jadi default sort, tapi jangan masukkan `id` ke whitelist `sort` publik.
+
+### Filter & sort wajib whitelist
+
+- Jangan pernah menempelkan nama kolom dari query string langsung ke SQL. Petakan
+  nama publik ke kolom yang diizinkan lewat map/kode.
+- Parameter di luar whitelist → `400`, supaya kesalahan FE cepat ketahuan.
+- Filter tidak boleh membuka kolom audit atau id internal. Filter relasi memakai
+  `*_uuid`, contoh `?category_uuid=<uuid>`, lalu di-resolve ke `category_id`.
+- Cursor tidak menyimpan sort/filter. FE wajib memakai `sort` dan filter yang sama
+  selama menelusuri halaman; server tidak bisa mendeteksi perubahan di tengah jalan.
+
+### Bentuk response list
+
+```json
+{
+  "data": [ { "uuid": "..." } ],
+  "next_cursor": "uuid-baris-terakhir",
+  "has_more": true
+}
+```
+
 ## Database & Migrasi
 
 - Migrasi **SQL**, bukan Go: `make migrate-create name=tambah_kategori`, lalu isi
@@ -216,6 +298,9 @@ Catatan penting:
 - Response API tidak boleh membocorkan id internal atau kolom audit. Saat menyentuh
   handler, pastikan test tetap mengecek bahwa field `id`, `*_id`, dan `*_by` tidak
   pernah muncul di body response.
+- Untuk endpoint list, uji juga: halaman pertama, `has_more`, `next_cursor`, halaman
+  kedua lewat `after`, `after` tidak valid → `400`, dan `limit` di luar rentang →
+  `422`.
 
 ## Build & Deploy
 
@@ -247,6 +332,8 @@ Catatan penting:
    audit + soft delete. Jangan membuat tabel tanpa itu walau terlihat sederhana.
 10. Jangan pernah mengekspos `id`, `*_id`, atau kolom audit ke JSON. Kalau ragu,
     default-nya `json:"-"`.
+11. Endpoint list wajib cursor pagination (`?after=<uuid>`, default `id DESC`) dengan
+    filter/sort whitelist. Jangan menambah `offset`, `page`, atau `total`.
 
 ## Checklist Menambah Resource Baru
 
@@ -256,11 +343,15 @@ Catatan penting:
 2. `internal/models/<resource>.go` — model bun (`ID` dan kolom audit `json:"-"`,
    `UUID` → `json:"uuid"`) + `Create...Request`/`Update...Request` + `Validate()`.
 3. `internal/repository/<resource>.go` — interface + implementasi in-memory
-   (pakai `uuid.NewString()`, hormati `deleted_at`).
+   (pakai `uuid.NewString()`, hormati `deleted_at`). Method list menerima params
+   (`After`, `Limit`, `Sort`, filter) dan mengembalikan `Page` berisi data +
+   `NextCursor` + `HasMore`.
 4. `internal/repository/postgres_<resource>.go` — implementasi bun: lookup lewat
-   `uuid`, filter `deleted_at IS NULL`, delete = soft delete.
+   `uuid`, filter `deleted_at IS NULL`, delete = soft delete, list memakai keyset
+   `(kolom_sort, id)` + `LIMIT limit+1`.
 5. `internal/handler/<resource>.go` — handler + `Routes()`, resolve `*_uuid` ke
-   `*_id` internal, `created_by`/`updated_by` diisi dari konteks.
+   `*_id` internal, `created_by`/`updated_by` diisi dari konteks, parse
+   `after`/`limit`/`sort` + validasi whitelist.
 6. `internal/router/router.go` — mount route baru.
 7. `internal/router/router_test.go` — test alur CRUD + pastikan tidak ada `id`/audit
    di response.
@@ -273,3 +364,7 @@ Aturan skema di atas berlaku untuk tabel baru dan hasil migrasi berikutnya.
 Tabel `products` yang sekarang **belum** sesuai: masih memakai `id uuid` sebagai PK,
 belum punya kolom audit, dan delete-nya masih hard delete. Jangan menganggapnya
 sebagai contoh yang benar; ubah lewat migrasi baru saat memang diminta.
+
+Endpoint `GET /products` juga masih mengembalikan `total` tanpa cursor. Saat
+disentuh, ubah ke bentuk paginasi (`next_cursor` + `has_more`) sesuai aturan di
+atas, bukan menambahkan cursor di samping `total`.
