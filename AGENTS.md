@@ -179,6 +179,9 @@ Catatan penting:
 ### Soft delete
 
 - Hapus data = `UPDATE ... SET deleted_by = ?, deleted_at = now()`. Jangan `DELETE`.
+- `deleted_at`/`deleted_by` nullable by design: `NULL` = baris aktif, terisi = terhapus.
+  Kolom ini **tidak pernah** masuk `ORDER BY`; semua query baca sudah menyaring
+  `deleted_at IS NULL`, jadi baris yang tersisa selalu aktif.
 - **Semua** query baca wajib menyaring `deleted_at IS NULL`.
 - `GetByUUID` mengembalikan `ErrNotFound` bila baris sudah ter-soft-delete.
 
@@ -237,10 +240,15 @@ ORDER BY name DESC, id DESC
 LIMIT $limit + 1;
 ```
 
-- Kolom yang boleh dipakai `sort` **harus NOT NULL**. Row comparison dengan NULL
-  menghasilkan NULL (bukan true), sehingga baris ber-NULL hilang dari hasil.
+- Default `id DESC` dipilih justru karena `id` selalu terisi dan monotonik sehingga
+  urutannya stabil antar-halaman. `uuid` v4 acak, tidak bisa dipakai mengurutkan.
+- `deleted_at` nullable tidak ikut soal: ia tidak pernah jadi kolom sort, dan
+  `deleted_at IS NULL` sudah difilter di semua query.
+- Kolom audit (`*_by`, `*_at`) nullable dan tidak pernah masuk whitelist sort.
+- Kalau ada kolom bisnis yang nullable, jangan masukkan ke whitelist sort: row
+  comparison dengan NULL menghasilkan NULL (bukan true), sehingga barisnya hilang
+  dari hasil.
 - Tambahkan index komposit `(kolom_sort, id)` untuk setiap kolom di whitelist sort.
-- `uuid` tidak boleh jadi kolom sort (acak, tidak bermakna).
 - Sort hanya satu kolom + tiebreaker `id`. Jangan menerima multi-kolom.
 - `id` boleh jadi default sort, tapi jangan masukkan `id` ke whitelist `sort` publik.
 
