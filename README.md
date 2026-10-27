@@ -137,15 +137,46 @@ internal/router/router.go                  # routing & middleware
 
 ## Endpoint
 
-| Method | Path            | Keterangan            |
-|--------|-----------------|-----------------------|
-| GET    | `/health`       | health check          |
-| GET    | `/products`     | daftar produk         |
-| POST   | `/products`     | buat produk           |
-| GET    | `/products/{id}`| detail produk         |
-| PUT    | `/products/{id}`| update penuh          |
-| PATCH  | `/products/{id}`| update sebagian       |
-| DELETE | `/products/{id}`| hapus produk          |
+| Method | Path               | Keterangan                        |
+|--------|--------------------|-----------------------------------|
+| GET    | `/health`          | health check                      |
+| GET    | `/products`        | daftar produk (cursor pagination) |
+| POST   | `/products`        | buat produk                       |
+| GET    | `/products/{uuid}` | detail produk                     |
+| PUT    | `/products/{uuid}` | update sebagian                   |
+| PATCH  | `/products/{uuid}` | update sebagian                   |
+| DELETE | `/products/{uuid}` | soft delete produk                |
+
+Identifier publik adalah `uuid`. `id` internal dan kolom audit tidak pernah
+dikirim ke response.
+
+### Parameter list
+
+| Param       | Default  | Keterangan                                              |
+|-------------|----------|---------------------------------------------------------|
+| `after`     | kosong   | `uuid` baris terakhir halaman sebelumnya                |
+| `limit`     | `20`     | 1–100; di luar rentang → `422`                          |
+| `sort`      | `id DESC`| `name`, `price`, `stock`; prefix `-` untuk DESC         |
+| `name`      | –        | filter nama (contains, case-insensitive)                |
+| `stock_min` | –        | filter stok minimal (inklusif)                          |
+| `price_min` | –        | filter harga minimal (inklusif)                         |
+| `price_max` | –        | filter harga maksimal (inklusif)                        |
+
+Parameter di luar daftar di atas, `sort` yang tidak dikenal, atau `after` yang
+bukan `uuid` valid / sudah terhapus akan dibalas `400`. `id`, `offset`, `page`,
+dan `total` tidak didukung.
+
+Response list:
+
+```json
+{
+  "data": [ { "uuid": "...", "name": "...", "price": 45000, "stock": 10 } ],
+  "next_cursor": "uuid-baris-terakhir",
+  "has_more": true
+}
+```
+
+`next_cursor` bernilai `null` bila `has_more` bernilai `false`.
 
 ## Contoh
 
@@ -155,19 +186,25 @@ curl -X POST http://localhost:8080/products \
   -H 'Content-Type: application/json' \
   -d '{"name":"Kopi Gayo","price":45000,"stock":10}'
 
-# List
-curl http://localhost:8080/products
+# List (halaman pertama)
+curl 'http://localhost:8080/products?limit=20'
+
+# List dengan filter dan sort
+curl 'http://localhost:8080/products?name=kopi&stock_min=1&sort=-price&limit=10'
+
+# Halaman berikutnya memakai next_cursor dari response sebelumnya
+curl 'http://localhost:8080/products?after=<uuid>&limit=20'
 
 # Get
-curl http://localhost:8080/products/<id>
+curl http://localhost:8080/products/<uuid>
 
 # Update (partial)
-curl -X PATCH http://localhost:8080/products/<id> \
+curl -X PATCH http://localhost:8080/products/<uuid> \
   -H 'Content-Type: application/json' \
   -d '{"stock":5}'
 
-# Delete
-curl -X DELETE http://localhost:8080/products/<id> -i
+# Delete (soft delete)
+curl -X DELETE http://localhost:8080/products/<uuid> -i
 ```
 
 ## Test
@@ -180,3 +217,9 @@ go test ./...
 
 Data produk disimpan di PostgreSQL. Repository in-memory tetap tersedia dan
 dipakai oleh test router supaya `go test ./...` tidak membutuhkan database.
+
+Hapus produk berarti *soft delete* (`deleted_at` diisi), bukan `DELETE`, sehingga
+baris tetap ada di database tetapi tidak muncul lagi di endpoint mana pun.
+Kolom audit `created_by`, `updated_by`, dan `deleted_by` masih `NULL` karena
+aplikasi belum memiliki autentikasi; `created_at`, `updated_at`, dan `deleted_at`
+tetap diisi server.

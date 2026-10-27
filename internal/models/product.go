@@ -9,15 +9,22 @@ import (
 )
 
 // Product adalah representasi produk yang disimpan dan dikembalikan via API.
+// id internal dan kolom audit tidak pernah dikirim ke klien.
 type Product struct {
 	bun.BaseModel `bun:"table:products,alias:p"`
 
-	ID        string    `bun:"id,pk,type:uuid" json:"id"`
-	Name      string    `bun:"name,notnull" json:"name"`
-	Price     float64   `bun:"price,notnull,type:numeric(12,2)" json:"price"`
-	Stock     int       `bun:"stock,notnull" json:"stock"`
-	CreatedAt time.Time `bun:"created_at,notnull,default:now()" json:"created_at"`
-	UpdatedAt time.Time `bun:"updated_at,notnull,default:now()" json:"updated_at"`
+	ID    int64   `bun:"id,pk,autoincrement" json:"-"`
+	UUID  string  `bun:"uuid,notnull,type:uuid" json:"uuid"`
+	Name  string  `bun:"name,notnull" json:"name"`
+	Price float64 `bun:"price,notnull,type:numeric(12,2)" json:"price"`
+	Stock int     `bun:"stock,notnull" json:"stock"`
+
+	CreatedBy *int64     `bun:"created_by" json:"-"`
+	CreatedAt *time.Time `bun:"created_at" json:"-"`
+	UpdatedBy *int64     `bun:"updated_by" json:"-"`
+	UpdatedAt *time.Time `bun:"updated_at" json:"-"`
+	DeletedBy *int64     `bun:"deleted_by" json:"-"`
+	DeletedAt *time.Time `bun:"deleted_at" json:"-"`
 }
 
 // CreateProductRequest adalah payload untuk membuat produk baru.

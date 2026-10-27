@@ -368,11 +368,12 @@ LIMIT $limit + 1;
 
 ## Status Penerapan
 
-Aturan skema di atas berlaku untuk tabel baru dan hasil migrasi berikutnya.
-Tabel `products` yang sekarang **belum** sesuai: masih memakai `id uuid` sebagai PK,
-belum punya kolom audit, dan delete-nya masih hard delete. Jangan menganggapnya
-sebagai contoh yang benar; ubah lewat migrasi baru saat memang diminta.
+Tabel `products` dan endpoint CRUD-nya sudah mengikuti aturan di atas: `id`
+internal + `uuid` publik, kolom audit, soft delete, cursor pagination, serta
+filter/sort whitelist. Migrasi `create_products` ditulis dari awal saat tabel
+di-reset, jadi tidak ada migrasi alter terpisah.
 
-Endpoint `GET /products` juga masih mengembalikan `total` tanpa cursor. Saat
-disentuh, ubah ke bentuk paginasi (`next_cursor` + `has_more`) sesuai aturan di
-atas, bukan menambahkan cursor di samping `total`.
+Pengecualian sementara: aplikasi belum punya autentikasi, sehingga
+`created_by`, `updated_by`, dan `deleted_by` selalu `NULL`. `created_at`,
+`updated_at`, dan `deleted_at` tetap diisi server. Saat auth ditambahkan, isi
+kolom `*_by` dari aktor di konteks tanpa mengubah bentuk response.
