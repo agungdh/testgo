@@ -18,16 +18,5 @@ CREATE TABLE IF NOT EXISTS products (
     CONSTRAINT products_stock_non_negative CHECK (stock >= 0)
 );
 
--- identifier publik: hash index (non-unique)
-CREATE INDEX IF NOT EXISTS products_uuid_idx ON products USING hash (uuid);
-
--- mempercepat filter soft delete
-CREATE INDEX IF NOT EXISTS products_deleted_at_idx ON products (deleted_at);
-
--- index komposit untuk cursor pagination per kolom sort
-CREATE INDEX IF NOT EXISTS products_name_id_idx ON products (name, id);
-CREATE INDEX IF NOT EXISTS products_price_id_idx ON products (price, id);
-CREATE INDEX IF NOT EXISTS products_stock_id_idx ON products (stock, id);
-
 -- +goose Down
 DROP TABLE IF EXISTS products;

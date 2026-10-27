@@ -126,12 +126,6 @@ CREATE TABLE IF NOT EXISTS products (
     deleted_by  bigint,
     deleted_at  timestamptz
 );
-
--- identifier publik: hash index (non-unique)
-CREATE INDEX IF NOT EXISTS products_uuid_idx ON products USING hash (uuid);
-
--- mempercepat filter soft delete
-CREATE INDEX IF NOT EXISTS products_deleted_at_idx ON products (deleted_at);
 ```
 
 ### Kolom wajib
@@ -139,7 +133,7 @@ CREATE INDEX IF NOT EXISTS products_deleted_at_idx ON products (deleted_at);
 | Kolom | Tipe | Aturan |
 |---|---|---|
 | `id` | `bigint GENERATED ALWAYS AS IDENTITY` | PK internal. **Tidak pernah** di-expose |
-| `uuid` | `uuid NOT NULL` | UUID v4, identifier publik. Punya hash index |
+| `uuid` | `uuid NOT NULL` | UUID v4, identifier publik. Tanpa index tambahan |
 | `created_by` | `bigint` | nullable, **tanpa FK** |
 | `created_at` | `timestamptz` | nullable |
 | `updated_by` | `bigint` | nullable, **tanpa FK** |
@@ -156,9 +150,12 @@ Catatan penting:
   `created_by`/`created_at` saat insert dan `updated_by`/`updated_at` saat update.
 - Semua `*_at` memakai `timestamptz`, tidak pernah `timestamp` atau `timestamp without
   time zone`.
-- Hash index tidak bisa `UNIQUE` di PostgreSQL. Keunikan `uuid` dijamin oleh
-  generator v4 di aplikasi, bukan oleh DB. Jangan menambah `UNIQUE` diam-diam tanpa
-  persetujuan, dan jangan mengganti hash index menjadi btree.
+- **Jangan menambah index kecuali memang wajib**: primary key, unique constraint, dan
+  foreign key. Index untuk pencarian, filter, atau sort **tidak** dibuat di awal —
+  optimasi dilakukan nanti setelah ada bukti query lambat, bukan spekulasi.
+  `uuid` dan `deleted_at` tidak di-index secara default.
+- Keunikan `uuid` dijamin oleh generator v4 di aplikasi, bukan oleh DB. Jangan
+  menambah `UNIQUE` atau index lain tanpa persetujuan.
 - `id` **bukan** autoincrement manual: jangan mengirim nilai `id` dari Go, biarkan
   `GENERATED ALWAYS AS IDENTITY` yang mengisi.
 
@@ -248,7 +245,8 @@ LIMIT $limit + 1;
 - Kalau ada kolom bisnis yang nullable, jangan masukkan ke whitelist sort: row
   comparison dengan NULL menghasilkan NULL (bukan true), sehingga barisnya hilang
   dari hasil.
-- Tambahkan index komposit `(kolom_sort, id)` untuk setiap kolom di whitelist sort.
+- Jangan menambah index komposit `(kolom_sort, id)` selama belum ada bukti query
+  lambat. Keyset pagination tetap benar tanpa index; optimasi ditunda.
 - Sort hanya satu kolom + tiebreaker `id`. Jangan menerima multi-kolom.
 - `id` boleh jadi default sort, tapi jangan masukkan `id` ke whitelist `sort` publik.
 
@@ -346,8 +344,8 @@ LIMIT $limit + 1;
 ## Checklist Menambah Resource Baru
 
 1. Migrasi `internal/db/migrations/<timestamp>_create_<tabel>.sql`:
-   `id` identity, `uuid`, kolom bisnis, enam kolom audit, hash index untuk `uuid`,
-   index untuk `deleted_at`, plus blok `-- +goose Down`.
+   `id` identity, `uuid`, kolom bisnis, enam kolom audit, plus blok
+   `-- +goose Down`. Jangan menambah index selain yang wajib (PK/unique/FK).
 2. `internal/models/<resource>.go` — model bun (`ID` dan kolom audit `json:"-"`,
    `UUID` → `json:"uuid"`) + `Create...Request`/`Update...Request` + `Validate()`.
 3. `internal/repository/<resource>.go` — interface + implementasi in-memory
