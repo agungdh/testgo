@@ -15,10 +15,10 @@ template HTML, dan semua response berupa JSON.
 | Bahasa | Go 1.27.3 | lihat `go.mod`, jangan turunkan versinya tanpa alasan |
 | Router | `go-chi/chi/v5` | sub-router per resource lewat `Routes()` |
 | ORM | `uptrace/bun` v1.3 | dialect `pgdialect`, driver `pgdriver` (bukan `lib/pq`) |
-| Database | PostgreSQL 18 | via `docker compose` |
+| Database | PostgreSQL 18 | **satu-satunya database** yang dipakai; lihat aturan skema di bawah |
 | Migrasi | `pressly/goose/v3` | SQL, di-embed ke binary |
 | Config | `joho/godotenv` | `.env` opsional, env proses menang |
-| ID | `google/uuid` | PK produk bertipe `uuid` |
+| ID | `google/uuid` | UUID v4 untuk identifier publik (lihat aturan skema) |
 | Logging | `log/slog` | stdlib, structured key-value |
 | Cache | Valkey 9.1 (compose) | **belum dipakai kode**; belum ada client di `go.mod` |
 | Deploy | Docker distroless + GitHub Actions | binary di-build di CI, bukan di Dockerfile |
@@ -77,13 +77,26 @@ Alur request: `router` -> `handler` -> `repository.ProductRepository` -> impleme
 - Error yang bisa dipetakan ke HTTP memakai sentinel `repository.ErrNotFound`.
   Error lain di-log dengan `slog.Error` lalu jadi 500.
 - Log memakai `slog` dengan pasangan key-value, bukan `fmt.Printf`.
-- Response JSON selalu snake_case untuk field DB (`created_at`, `updated_at`).
+- Nama field JSON `snake_case`. Identifier publik selalu `uuid` / `*_uuid`
+  (lihat [Skema Tabel & Penamaan](#skema-tabel--penamaan)).
+
+### Yang Boleh Dilihat FE
+
+FE **tidak boleh** tahu id internal maupun kolom audit. Aturan keras:
+
+- Jangan pernah menambahkan `json:"..."` untuk `id` atau kolom yang berakhiran `_id`.
+  Pakai `json:"-"`.
+- Jangan pernah mengirim `created_by`, `created_at`, `updated_by`, `updated_at`,
+  `deleted_by`, `deleted_at` ke response.
+- Yang di-expose hanya `uuid` (record itu sendiri) dan `<relasi>_uuid` (foreign key).
+- UUID **selalu** dibuat server (`uuid.NewString()`), jangan pernah diterima dari body
+  request dan jangan pernah dipakai sebagai input `WHERE` untuk id internal.
 
 ### Format Response
 
 ```json
-{ "data": { ... } }
-{ "data": [ ... ], "total": 3 }
+{ "data": { "uuid": "...", "name": "...", "price": 45000 } }
+{ "data": [ { "uuid": "...", "category_uuid": "..." } ], "total": 3 }
 { "error": { "message": "..." } }
 { "error": { "message": "validasi gagal", "fields": { "name": "wajib diisi" } } }
 ```
@@ -91,6 +104,83 @@ Alur request: `router` -> `handler` -> `repository.ProductRepository` -> impleme
 Status yang dipakai: `200` OK, `201` Created (+ header `Location`), `204` No Content,
 `400` body JSON invalid, `404` tidak ditemukan, `405` method salah, `422` validasi gagal,
 `500` error server.
+
+## Skema Tabel & Penamaan
+
+PostgreSQL adalah satu-satunya database. Tidak ada MySQL, SQLite, atau ORM lain.
+**Setiap tabel** wajib mengikuti bentuk di bawah, tanpa terkecuali.
+
+```sql
+CREATE TABLE IF NOT EXISTS products (
+    id          bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    uuid        uuid        NOT NULL,
+
+    name        text        NOT NULL,
+    price       numeric(12, 2) NOT NULL DEFAULT 0,
+    category_id bigint      REFERENCES categories (id),
+
+    created_by  bigint,
+    created_at  timestamptz,
+    updated_by  bigint,
+    updated_at  timestamptz,
+    deleted_by  bigint,
+    deleted_at  timestamptz
+);
+
+-- identifier publik: hash index (non-unique)
+CREATE INDEX IF NOT EXISTS products_uuid_idx ON products USING hash (uuid);
+
+-- mempercepat filter soft delete
+CREATE INDEX IF NOT EXISTS products_deleted_at_idx ON products (deleted_at);
+```
+
+### Kolom wajib
+
+| Kolom | Tipe | Aturan |
+|---|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY` | PK internal. **Tidak pernah** di-expose |
+| `uuid` | `uuid NOT NULL` | UUID v4, identifier publik. Punya hash index |
+| `created_by` | `bigint` | nullable, **tanpa FK** |
+| `created_at` | `timestamptz` | nullable |
+| `updated_by` | `bigint` | nullable, **tanpa FK** |
+| `updated_at` | `timestamptz` | nullable |
+| `deleted_by` | `bigint` | nullable, **tanpa FK** |
+| `deleted_at` | `timestamptz` | nullable, penanda soft delete |
+
+Catatan penting:
+
+- Tipe `*_by` mengikuti tipe `id` internal, yaitu `bigint` — **bukan** uuid. Isinya
+  id internal aktor, hanya untuk catatan/audit di DB.
+- `*_by` sengaja **tanpa foreign key**. Jangan menambahkan `REFERENCES` ke kolom audit.
+- Semua kolom audit **nullable** di level DB. Aplikasi tetap wajib mengisi
+  `created_by`/`created_at` saat insert dan `updated_by`/`updated_at` saat update.
+- Semua `*_at` memakai `timestamptz`, tidak pernah `timestamp` atau `timestamp without
+  time zone`.
+- Hash index tidak bisa `UNIQUE` di PostgreSQL. Keunikan `uuid` dijamin oleh
+  generator v4 di aplikasi, bukan oleh DB. Jangan menambah `UNIQUE` diam-diam tanpa
+  persetujuan, dan jangan mengganti hash index menjadi btree.
+- `id` **bukan** autoincrement manual: jangan mengirim nilai `id` dari Go, biarkan
+  `GENERATED ALWAYS AS IDENTITY` yang mengisi.
+
+### Penamaan yang di-expose
+
+| Konsep | Kolom DB | Field JSON |
+|---|---|---|
+| Primary key | `id` (bigint) | tidak ada |
+| Identifier publik | `uuid` | `uuid` |
+| Foreign key | `category_id` | `category_uuid` |
+
+- Relasi di DB tetap memakai `*_id` + FK ke `id` internal.
+- Di level API, seluruh identifier menjadi `uuid` atau berakhiran `_uuid`. Tidak ada
+  field JSON yang berakhiran `_id`.
+- Handler/repository yang menerima `category_uuid` harus me-resolve-nya ke
+  `category_id` internal sebelum query.
+
+### Soft delete
+
+- Hapus data = `UPDATE ... SET deleted_by = ?, deleted_at = now()`. Jangan `DELETE`.
+- **Semua** query baca wajib menyaring `deleted_at IS NULL`.
+- `GetByUUID` mengembalikan `ErrNotFound` bila baris sudah ter-soft-delete.
 
 ## Database & Migrasi
 
@@ -102,8 +192,7 @@ Status yang dipakai: `200` OK, `201` Created (+ header `Location`), `204` No Con
   di production dan jalankan `make migrate-up` terpisah.
 - `down` hanya me-rollback satu migrasi terakhir. Jangan mengubah migrasi yang
   sudah pernah jalan di environment lain; buat migrasi baru.
-- Kolom waktu pakai `timestamptz` + `DEFAULT now()`; validasi bisnis juga
-  ditegakkan sebagai `CHECK` constraint (mis. `price >= 0`).
+- Validasi bisnis juga ditegakkan sebagai `CHECK` constraint (mis. `price >= 0`).
 - Pertahankan pengaturan pool kecil di `internal/db/db.go` (target VPS 1 core /
   1 GB RAM). Jangan naikkan default tanpa alasan jelas.
 
@@ -124,6 +213,9 @@ Status yang dipakai: `200` OK, `201` Created (+ header `Location`), `204` No Con
   mengikuti pola `doRequest` + alur CRUD.
 - Jangan membuat test yang butuh PostgreSQL berjalan, kecuali diminta eksplisit
   dan diberi build tag/skip otomatis.
+- Response API tidak boleh membocorkan id internal atau kolom audit. Saat menyentuh
+  handler, pastikan test tetap mengecek bahwa field `id`, `*_id`, dan `*_by` tidak
+  pernah muncul di body response.
 
 ## Build & Deploy
 
@@ -151,16 +243,33 @@ Status yang dipakai: `200` OK, `201` Created (+ header `Location`), `204` No Con
 7. Jika mengubah endpoint, perbarui tabel Endpoint + contoh `curl` di `README.md`.
 8. Jangan menyentuh riwayat git (`reset --hard`, `push --force`, amend commit
    lama) kecuali diminta eksplisit.
+9. Setiap tabel baru **wajib** memakai pola `id` internal + `uuid` publik + kolom
+   audit + soft delete. Jangan membuat tabel tanpa itu walau terlihat sederhana.
+10. Jangan pernah mengekspos `id`, `*_id`, atau kolom audit ke JSON. Kalau ragu,
+    default-nya `json:"-"`.
 
 ## Checklist Menambah Resource Baru
 
-1. `internal/db/migrations/<timestamp>_create_<tabel>.sql` (up + down).
-2. `internal/models/<resource>.go` — model bun + `Create...Request`/`Update...Request`
-   + `Validate()`.
-3. `internal/repository/<resource>.go` — interface + implementasi in-memory.
-4. `internal/repository/postgres_<resource>.go` — implementasi bun.
-5. `internal/handler/<resource>.go` — handler + `Routes()`.
+1. Migrasi `internal/db/migrations/<timestamp>_create_<tabel>.sql`:
+   `id` identity, `uuid`, kolom bisnis, enam kolom audit, hash index untuk `uuid`,
+   index untuk `deleted_at`, plus blok `-- +goose Down`.
+2. `internal/models/<resource>.go` — model bun (`ID` dan kolom audit `json:"-"`,
+   `UUID` → `json:"uuid"`) + `Create...Request`/`Update...Request` + `Validate()`.
+3. `internal/repository/<resource>.go` — interface + implementasi in-memory
+   (pakai `uuid.NewString()`, hormati `deleted_at`).
+4. `internal/repository/postgres_<resource>.go` — implementasi bun: lookup lewat
+   `uuid`, filter `deleted_at IS NULL`, delete = soft delete.
+5. `internal/handler/<resource>.go` — handler + `Routes()`, resolve `*_uuid` ke
+   `*_id` internal, `created_by`/`updated_by` diisi dari konteks.
 6. `internal/router/router.go` — mount route baru.
-7. `internal/router/router_test.go` — test alur CRUD.
-8. `README.md` — struktur, endpoint, contoh `curl`.
-9. `main.go` — wire repository baru.
+7. `internal/router/router_test.go` — test alur CRUD + pastikan tidak ada `id`/audit
+   di response.
+8. `main.go` — wire repository baru.
+9. `README.md` — struktur, endpoint, contoh `curl` (pakai `uuid`).
+
+## Status Penerapan
+
+Aturan skema di atas berlaku untuk tabel baru dan hasil migrasi berikutnya.
+Tabel `products` yang sekarang **belum** sesuai: masih memakai `id uuid` sebagai PK,
+belum punya kolom audit, dan delete-nya masih hard delete. Jangan menganggapnya
+sebagai contoh yang benar; ubah lewat migrasi baru saat memang diminta.
